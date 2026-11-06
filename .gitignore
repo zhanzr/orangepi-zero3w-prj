@@ -8,3 +8,5 @@ Thumbs.db
 *~
 # Project binaries (add one line per project)
 /app/blink_hello/blink_hello
+/app/coremark/coremark
+/app/coremark_multi/coremark_multi

@@ -1,7 +1,12 @@
 #!/bin/bash
 # Find the Orange Pi Zero 3W on the local /24 and update the
-# opz3w ssh alias in ~/.ssh/config (WSL cannot resolve the mDNS
-# name orangepizero3w.local, so the numeric IP lives in the config).
+# opz3w ssh alias in ~/.ssh/config with the numeric IP.
+#
+# Normally NOT needed: WSL resolves orangepizero3w.local via mDNS
+# (WSL mirrored networking mode + avahi-daemon in WSL, see the root
+# README). This script is the fallback for when mDNS is broken or the
+# DHCP lease moved; it overwrites the alias with the numeric IP, so
+# re-enable the hostname afterwards if you prefer it.
 set -u
 
 SUBNET=${1:-${OPZ3W_SUBNET:-192.168.5}}

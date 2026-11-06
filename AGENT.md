@@ -25,12 +25,19 @@ UART2/6/7, PWM0_0..9. Two 22-pin MIPI CSI camera connectors; no HDMI.
 
 ## Board access
 
-- `ssh opz3w` from Windows (mDNS `orangepizero3w.local`) and from WSL
-  (numeric IP in `~/.ssh/config` - the IP drifts after reboots;
-  `tools/find_board.sh` rescans and rewrites the alias). User **root**,
-  key auth (`id_rsa_pocket`), no sudo needed on the board.
-- The board is WiFi-only; if ssh stops resolving, run
-  `tools/find_board.sh` from WSL.
+- `ssh opz3w` from Windows and from WSL - both resolve the mDNS name
+  `orangepizero3w.local` (WSL: mirrored networking mode +
+  avahi-daemon inside WSL; see the root README). User **root**, key
+  auth (`id_rsa_pocket`), no sudo needed on the board.
+- The board is WiFi-only. If mDNS resolution breaks, run
+  `tools/find_board.sh` from WSL - it scans the /24 and rewrites the
+  `opz3w` alias with the numeric IP as a fallback.
+- Long ssh sessions can wedge silently on this WiFi link (seen once
+  after a ~6 min benchmark: the remote command finished, the local
+  ssh never noticed). The `opz3w` ssh config sets
+  `ServerAliveInterval 15` to detect dead connections; if a session
+  still wedges, kill the local `ssh`/`make` and trust the on-board
+  artifacts (`results.csv` etc.) as the source of truth.
 
 ## Layout
 
@@ -70,6 +77,18 @@ UART2/6/7, PWM0_0..9. Two 22-pin MIPI CSI camera connectors; no HDMI.
   `thermal_zone3` = `cpul_thermal_zone` (A55 six), both Allwinner THS,
   millidegrees C. zone1 = ddr, zone2 = npu, zone4 = gpu. Use the
   cpub/cpul pair for "SoC temp".
+
+## Benchmark conventions
+
+- Pin clocks first: `performance` governor on all 8 cpus (A55 cluster
+  max 1794 MHz, A76 cluster max 2002 MHz), restore `schedutil`
+  afterwards - the app Makefiles do this (`make run-perf`; note the
+  remote command must be single-quoted so the local shell does not eat
+  `$g`/`$?`).
+- A valid CoreMark run needs > 10 s: the A76 does ~15300 CM/s, so
+  >= ~154000 iterations; defaults are set accordingly.
+- Makefile recipes that ssh with embedded `$` go through make's `$$`
+  first, then the local shell - single-quote the remote command.
 
 ## Commit discipline
 

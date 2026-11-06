@@ -7,6 +7,8 @@ with its own `Makefile` and `README.md`.
 | Project | Description |
 |---|---|
 | `blink_hello/` | Blinks the on-board `status_led` + samples both SoC die temps (cpub A76 / cpul A55 thermal zones) |
+| `coremark/` | EEMBC CoreMark 1.0, single aarch64 binary: A76 15328 CM/s / A55 7161 CM/s, performance-governor runs (`make run-perf`) |
+| `coremark_multi/` | Multi-core CoreMark: independent pinned instances on all 8 cores, round-robin + parallel phases, per-core scores + `results.csv` |
 
 ## Common workflow (per project, from the project directory)
 

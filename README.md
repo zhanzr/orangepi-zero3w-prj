@@ -19,12 +19,16 @@ Connector close-ups live in [board_images/](board_images/).
 - Windows: `ssh opz3w` - alias in `C:\Users\user1\.ssh\config`
   (`orangepizero3w.local`, user `root`, key `id_rsa_pocket`). mDNS
   resolution works on Windows, passwordless login is set up.
-- WSL: same alias `opz3w` in `~/.ssh/config`, but with the **numeric
-  IP** (currently `192.168.5.79`, the `wlan0` WiFi address) - WSL2 does
-  not resolve mDNS `.local` names. The private key is already in
-  `~/.ssh/id_rsa_pocket` (0600); `/mnt/c/...` copies are rejected by
-  Linux ssh (permissions). The DHCP lease can move - run
-  `tools/find_board.sh` to rescan and rewrite the alias.
+- WSL: same alias `opz3w` in `~/.ssh/config`, `HostName
+  orangepizero3w.local`. WSL runs in **mirrored networking mode**
+  (`C:\Users\user1\.wslconfig`: `networkingMode=mirrored`) with
+  `avahi-daemon` installed and enabled inside WSL - together they
+  resolve mDNS `.local` names (plain NAT-mode WSL2 blocks multicast,
+  which was why the old setup carried a numeric IP). The private key
+  is already in `~/.ssh/id_rsa_pocket` (0600); `/mnt/c/...` copies are
+  rejected by Linux ssh (permissions). If mDNS ever breaks, run
+  `tools/find_board.sh` from WSL to rescan and rewrite the alias with
+  the numeric IP as a fallback.
 - Login: **root**, passwordless (key installed; sudo is not needed on
   the board - we log in as root).
 - Serial console: debug header, 115200 8N1 - Extension pin 6 = GND,
@@ -64,7 +68,7 @@ apt if needed.
 
 | Item | Value |
 |---|---|
-| SoC | Allwinner A733 (sun60iw2): 2x Cortex-A76 @ max 2002 MHz (cpub cluster) + 6x Cortex-A55 @ max 1794 MHz (cpul cluster), 416 MHz min |
+| SoC | Allwinner A733 (sun60iw2): 2x Cortex-A76 @ max 2002 MHz (cpub cluster, part 0xd0b, cpus 6-7) + 6x Cortex-A55 @ max 1794 MHz (cpul cluster, part 0xd05, cpus 0-5), 416 MHz min, 12/9 OPPs |
 | RAM | 825 MiB visible (1 GiB part), zram swap |
 | Storage | TF card rootfs (`mmcblk1`), no eMMC |
 | Network | WiFi only, interface `wlan0` (DHCP, currently 192.168.5.79) - no Ethernet port |
