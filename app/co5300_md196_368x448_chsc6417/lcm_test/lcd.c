@@ -331,8 +331,9 @@ void DispGrayHor16(void)
 
 void DispBand(void)
 {
-    static const uint16_t color[8] = { 0xF800, 0xF800, 0x07E0, 0x07E0,
-                                       0x001F, 0x001F, 0xFFFF, 0xFFFF };
+    /* 8 DISTINCT bands - doubled pairs just look like 4 wide bands */
+    static const uint16_t color[8] = { 0xF800, 0x07E0, 0x001F, 0xFFE0,
+                                       0xF81F, 0x07FF, 0xFFFF, 0x0000 };
     uint16_t w = LCD_W();
     uint16_t h = LCD_H();
     uint16_t band = (uint16_t)(h / 8U);

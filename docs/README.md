@@ -5,6 +5,7 @@ Setup and design notes for the Orange Pi Zero 3W project.
 | File | Content |
 |---|---|
 | `co5300_md196_jp4-pinout.md` | CO5300 1.96" 368x448 AMOLED + CHSC6417 touch on JP4: full wiring (SPI3 + TWI0), DT overlays enabled + verified, bring-up notes |
+| `spi3-speed-quad-notes.md` | SPI3 speed ceiling (mod clock pinned at 40 MHz, measured wire-rate ladder) and why QSPI/Dual SPI are not usable on JP4 with the vendor kernel |
 | `e902-coprocessor.md` | The RISC-V XuanTie E902 (200 MHz): what it is, why it is NOT user-programmable on the vendor image, what the mainline route would take |
 
 Vendor manuals (PDFs, schematics, tools) are kept in

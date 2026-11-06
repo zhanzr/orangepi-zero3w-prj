@@ -1,16 +1,18 @@
 TARGET    := lcm_test
 CROSS     ?= aarch64-linux-gnu-
-CROSS_FLAGS := -O2 -Wall -Wextra -march=armv8-a
+CROSS_FLAGS := -O2 -Wall -Wextra -march=armv8-a -I/usr/include/freetype2
+LDLIBS    := -lfreetype
 BOARD     ?= opz3w
 BOARD_DIR ?= co5300_md196_368x448_chsc6417/lcm_test
-SOURCES   := main.c lcd.c spi_hw.c touch.c log.c \
+SOURCES   := main.c lcd.c spi_hw.c touch.c ft_text.c log.c \
              ref/lcd_fonts.c ref/lcd_font_1608.c
 
 all: $(TARGET)
 
-$(TARGET): main.c lcd.c spi_hw.c touch.c log.c spi_hw.h lcd.h touch.h log.h \
-           ref/lcd_fonts.h ref/lcd_font_1608.h logo64.h config.json
-	$(CROSS)gcc $(CROSS_FLAGS) $(SOURCES) -o $@
+$(TARGET): main.c lcd.c spi_hw.c touch.c ft_text.c log.c spi_hw.h lcd.h \
+           touch.h ft_text.h log.h ref/lcd_fonts.h ref/lcd_font_1608.h \
+           ref/logo_opi.h config.json
+	$(CROSS)gcc $(CROSS_FLAGS) $(SOURCES) -o $@ $(LDLIBS)
 
 push: $(TARGET)
 	ssh $(BOARD) "mkdir -p $(BOARD_DIR)"
@@ -28,11 +30,12 @@ run-s:
 
 deploy:
 	ssh $(BOARD) "mkdir -p $(BOARD_DIR)"
-	rsync -az main.c lcd.c spi_hw.c touch.c log.c spi_hw.h lcd.h touch.h \
-	    log.h ref logo64.h config.json README.md $(BOARD):$(BOARD_DIR)/
+	rsync -az main.c lcd.c spi_hw.c touch.c ft_text.c log.c spi_hw.h \
+	    lcd.h touch.h ft_text.h log.h ref config.json README.md \
+	    $(BOARD):$(BOARD_DIR)/
 
 build-remote:
-	ssh $(BOARD) "cd $(BOARD_DIR) && make CC=gcc"
+	ssh $(BOARD) "apt-get install -y libfreetype6-dev && cd $(BOARD_DIR) && make CC=gcc"
 
 clean:
 	rm -f $(TARGET)

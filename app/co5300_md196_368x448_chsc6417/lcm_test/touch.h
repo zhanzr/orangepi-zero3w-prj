@@ -3,10 +3,13 @@
   Orange Pi Zero 3W CO5300 module port.
 
   JP4.5 = PB2 (TWI0_SCL), JP4.3 = PB3 (TWI0_SDA). 7-bit slave address
-  0x2E. Touch data block at register 0x00: byte 0 = {[1:0] point count,
-  bit 6 = X bit 9, bit 7 = Y bit 9}, byte 1 = X[7:0], byte 2 = Y[7:0].
-  Chip ID at register 0xA7 (same layout three vendor sources agree on;
-  see the nucleo-l4r5 reference for the source-by-source note).
+  0x2E. Protocol per both STM32 reference ports:
+    reg 0x00, byte0: bits[2:0] = point count (0 = released, 1..5 =
+    contacts), bit6 = X[8], bit7 = Y[8]; byte1 = X[7:0]; byte2 = Y[7:0].
+    Access rules: reads
+    must be 16-byte-aligned block bases, <= 32 bytes, with retries
+    (the IC NACKs reads raced against its scan cycle). After release
+    the block freezes at the last report with bit0 cleared.
 */
 #ifndef TOUCH_H
 #define TOUCH_H
@@ -16,9 +19,11 @@
 #define TOUCH_I2C_DEV "/dev/i2c-0"
 #define TOUCH_ADDR_7BIT 0x2EU
 
-int      Touch_Init(void);                 /* 0 ok / -1 bus error  */
-uint8_t  Touch_SelfTest(void);             /* 1 = address ACKs     */
-uint8_t  Touch_ChipId(void);               /* reg 0xA7, 0 on error */
-void     Touch_Read(uint8_t *buf, uint8_t len); /* reg 0x00, zeroed on error */
+int      Touch_Init(void);      /* 0 ok / -1 bus error       */
+int      Touch_Sample(void);    /* 1 = down, 0 = up, -1 = no
+                                 * consistent report; refreshes X/Y */
+uint8_t  Touch_SelfTest(void);  /* 1 = bus ACKs (with retries) */
+int      Touch_X(void);         /* last reported X (0..368)   */
+int      Touch_Y(void);         /* last reported Y (0..448)   */
 
 #endif /* TOUCH_H */
