@@ -4,8 +4,9 @@ Wiring plan for the `co5300_md196_368x448_chsc6417` module (TK0196M106:
 **CO5300** 1.96" 368x448 AMOLED + **CHSC6417** capacitive touch) on the
 Orange Pi Zero 3W **JP4** 40-pin extension connector. Reference ports:
 `D:\stm32l4-prj\nucleo-l4r5\bare\co5300_md196_368x448_chsc6417` and the
-same-named `nucleo-u575` project (identical module wiring) - single-lane
-SPI, wrapped-command protocol, touch @ I2C 0x2E.
+same-named `nucleo-u575` project (identical module wiring) - standard
+single-lane SPI, wrapped-command protocol, touch @ I2C 0x2E. SI01 is
+connected to SPI3 MISO but is unused by the app's standard write path.
 
 ## Pin mapping (verified against live DT, see below)
 
@@ -13,7 +14,8 @@ SPI, wrapped-command protocol, touch @ I2C 0x2E.
 |---|---|---|---|---|
 | **CS** (QSPI_CS) | **24** | PE0 | SPI3_CS0 -> `/dev/spidev3.0` | hw CS via overlay; soft-CS fallback below |
 | **CLK** (QSPI_CLK) | **23** | PE1 | SPI3_CLK | `spi3_pin_default` group |
-| **MOSI** (QSPI_IO0) | **19** | PE2 | SPI3_MOSI | module is write-only; MISO **PE3 / JP4.21 stays unconnected** |
+| **SI00** (QSPI_IO0) | **19** | PE2 | SPI3_MOSI | standard SPI data |
+| **SI01** (QSPI_IO1) | **21** | PE3 | SPI3_MISO | connected; unused by standard write path |
 | **TOUCH_SCL** | **5** | PB2 | TWI0_SCL -> `/dev/i2c-0` | |
 | **TOUCH_SDA** | **3** | PB3 | TWI0_SDA | CHSC6417 @ 7-bit **0x2E**, data from reg 0x00 |
 | VCC | 1 (or 17) | V33 | 3.3 V rail | same rail the Nucleo reference used; confirm the module's tolerance before first power-up |
@@ -62,6 +64,11 @@ Backup of the pre-change file: `/boot/armbianEnv.txt.bak` on the board.
 - Protocol: every transaction is ONE CS frame: `02 00 <cmd> 00` header +
   payload; SPI **mode 3**, MSB first, write-only. Pixel bursts: window
   (2Ah/2Bh) once, first row `2Ch`, further rows `3Ch`.
+- Readback: the CO5300 datasheet's `03h` register-read response is driven
+  on SI00. SI00 currently connects to SPI3 MOSI, while SPI-controller
+  receive data comes from SI01 / SPI3 MISO. Therefore the present wiring
+  cannot read CO5300 status through ordinary spidev RX; a readback test
+  needs a bidirectional SI00 route or a separate high-impedance probe.
 - Vendor init (CO5300, verbatim): `FE 00`, sleep-out `11` + 120 ms, `FE 00`,
   `C4 80`, `3A 55` (RGB565), `53 20`, `63 FF`, `51 <brightness>`, `58 07`,
   `29` + 80 ms. **Do not send software reset `01h` outside the datasheet
@@ -69,11 +76,12 @@ Backup of the pre-change file: `/boot/armbianEnv.txt.bak` on the board.
   wired).
 - Brightness: `51h` only, linear DBV/256; the reference runs `0x01`
   (0.78 %) as the usable floor - start there.
-- Speed: panel write limit ~47 MHz; 60 MHz corrupted the checkerboard on
-  the reference. Start at **8-10 MHz** on spidev and climb; sunxi SPI
+- Speed: panel write limit 50 MHz per the CO5300 datasheet; 60 MHz
+  corrupted the checkerboard on the reference. Start at **8-10 MHz** on spidev and climb; sunxi SPI
   keeps CS inside the kernel driver, so watch for shifted frames.
 - Geometry: 368x448 RGB565, X offset 0 on the reference (vendor demo
-  drives 0..367); `LCD_X_OFFSET=16` is the documented fix if shifted.
+  drives 0..367);
+  `LCD_X_OFFSET=16` is the documented fix if shifted.
 - Touch: read reg 0x00: byte0 = {count[1:0], X bit9<<6, Y bit9<<7},
   byte1 = X[7:0], byte2 = Y[7:0]; chip id at 0xA7; Y axis reports
   448-Y in the reference console.

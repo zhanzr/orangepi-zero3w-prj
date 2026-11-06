@@ -5,14 +5,15 @@
   TK499 init, verbatim registers). Same drawing API as the rk3506
   st7365 lcm_test.
 
-  Bus: single-lane SPI3 on the JP4 header, wrapped commands (see
-  spi_hw.h) - one CS frame per transaction, mode 3, write-only.
+  Bus: standard single-lane SPI3 on the JP4 header, wrapped commands
+  (see spi_hw.h) - one CS frame per transaction, mode 3, write-only.
   No DC / RES / BLK pins wired: the wrapped protocol needs no DC, the
   POR settle rides on LCD_POWER_SETTLE_MS (and the CO5300 software
   reset 01h is deliberately NOT used - see the LCD_RESET() note in
   lcd.c), brightness is DCS 51h.
   Touch: CHSC6417 over TWI0 (/dev/i2c-0, 0x2E) - see touch.c.
-  Panel geometry: 368x448, 16bpp (3Ah = 0x55). The vendor demo drives
+  Panel geometry: 368x448, RGB565 (3Ah = 0x55).
+  The vendor demo drives
   columns 0..367 directly, so the X GRAM offset defaults to 0
   (LCD_X_OFFSET); if the image is shifted, try 16.
 */
@@ -95,8 +96,8 @@ uint16_t LCD_H(void);
 /* ---- API: init / window / colors ---- */
 uint32_t LCD_GetTick(void);
 void LCD_RESET(void);
-void LCD_IC_Init(void);
-void LCD_Init(void);
+int LCD_IC_Init(void);
+int LCD_Init(void);
 void LCD_Reinit(void);   /* sleep-in + re-init */
 void LCD_SetBrightness(uint8_t dbv);  /* DCS 51h, works at runtime */
 void LCD_SetAddress(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2);

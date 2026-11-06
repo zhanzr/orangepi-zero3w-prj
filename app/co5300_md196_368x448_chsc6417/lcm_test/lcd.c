@@ -11,8 +11,9 @@
   (2A/2B), the first row goes out as 2C and the remaining rows as 3C
   (write memory continue).
 
-  Bus: /dev/spidev3.0 mode 3, write-only (no readback anywhere; MISO
-  is not wired). No reset pin wired - the vendor sequence hardware-
+  Bus: /dev/spidev3.0 mode 3. The panel read response is on SI00,
+  which currently reaches SPI3 MOSI rather than MISO, so spidev cannot
+  read it with the existing wiring. No reset pin wired - the vendor sequence hardware-
   resets first; here the POR settle rides on LCD_POWER_SETTLE_MS.
   Touch: CHSC6417 over TWI0 (/dev/i2c-0) - see touch.c.
 */
@@ -101,14 +102,15 @@ void LCD_RESET(void)
 /* =====================================================================
    Init sequence - CO5300 (vendored TK0196M106 TK499 example, verbatim
    registers and order): command access unlock, sleep out, source/GIP
-   setup, 16bpp COLMOD, brightness (51h/53h - brightness is driven
-   over SPI, there is no BL pin), display on.
+   setup, COLMOD (RGB565), brightness
+   (51h/53h - brightness is driven over SPI, there is no BL pin),
+   display on.
    ===================================================================== */
-void LCD_IC_Init(void)
+int LCD_IC_Init(void)
 {
     static const uint8_t p00[] = { 0x00 };
     static const uint8_t pC4[] = { 0x80 };
-    static const uint8_t p3A[] = { 0x55 };              /* 16bpp        */
+    static const uint8_t p3A[] = { 0x55 };              /* RGB565       */
     static const uint8_t p53[] = { 0x20 };              /* display ctrl */
     static const uint8_t p63[] = { 0xFF };
     static const uint8_t p51[] = { LCD_BRIGHT_LO };
@@ -122,7 +124,7 @@ void LCD_IC_Init(void)
 
     spi_xfer(0xFE, p00, sizeof p00);        /* command access unlock */
     spi_xfer(0xC4, pC4, sizeof pC4);
-    spi_xfer(0x3A, p3A, sizeof p3A);        /* COLMOD 16bpp          */
+    spi_xfer(0x3A, p3A, sizeof p3A);        /* COLMOD                 */
     spi_xfer(0x53, p53, sizeof p53);        /* CTRL display: BC_EN=1,
                                              * DIM_EN=0               */
     spi_xfer(0x63, p63, sizeof p63);        /* HBM brightness (inert:
@@ -132,9 +134,11 @@ void LCD_IC_Init(void)
 
     spi_xfer(0x29, NULL, 0);                /* display on            */
     delay_ms(80);                           /* vendor: 80 ms         */
+
+    return 0;
 }
 
-void LCD_Init(void)
+int LCD_Init(void)
 {
     /* Power-on settle: on a COLD power-on the first commands can
      * arrive while the panel is still starting up and are lost. The
@@ -142,10 +146,12 @@ void LCD_Init(void)
     delay_ms(LCD_POWER_SETTLE_MS);
 
     LCD_RESET();
-    LCD_IC_Init();
+    if (LCD_IC_Init() != 0)
+        return -1;
 
     /* Clear to black. */
     DispColor(C565_BLACK);
+    return 0;
 }
 
 /* Re-init an already-running panel: display off, sleep in, then the
@@ -158,7 +164,8 @@ void LCD_Reinit(void)
     delay_ms(20);                 /* datasheet: >=5 ms before new cmds */
 
     LCD_RESET();
-    LCD_IC_Init();
+    if (LCD_IC_Init() != 0)
+        return;
 }
 
 /* DCS WRDISBV (51h) - works at runtime, used by the demo loop. */

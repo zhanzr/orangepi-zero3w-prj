@@ -19,12 +19,14 @@
   Logo: the Orange Pi logo extracted from the vendor user manual
   (ref/logo_opi.h) - replaces the rk3506 Rockchip boot logo.
 
-  Usage: ./lcm_test [-s speed_kHz] (default 40000 = 40 MHz request,
-  the maximum the driver serves; the CO5300 allows ~47 MHz writes,
-  60 MHz corrupts on the reference boards).
+  Usage: ./lcm_test [-s speed_kHz] (standard SPI, default speed 40000;
+  the CO5300 datasheet specifies a 50 MHz maximum write clock, and
+  60 MHz corrupted the checkerboard on the STM32 reference boards).
 */
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <errno.h>
 #include <string.h>
 #include <fcntl.h>
 #include <dirent.h>
@@ -50,11 +52,11 @@
 #define ANIM_H     (SCREEN_H - FPS_BAND)
 #define BACK_COLOR LCD_BLACK
 
-/* requested SPI speed (kHz) - shared with the info page.
- * 40000 is the maximum the driver serves: requests above 40 MHz are
- * clamped (the SPI3 module clock is pinned at 40 MHz by the vendor
- * CCU - see ../../docs/spi3-speed-quad-notes.md). */
+/* Requested SPI speed in kHz; actual SCK may differ. The app default
+ * remains at 40 MHz until the panel image is verified at higher rates.
+ * The CO5300 write clock limit is 50 MHz per its datasheet. */
 static unsigned g_speed_khz = 40000;
+static volatile sig_atomic_t g_stop_requested;
 #define INFO_DY    34      /* 26 px DejaVu line + leading */
 #define DWELL_MS   4000    /* per-pattern hold so colors can be judged */
 
@@ -134,6 +136,12 @@ static int g_touch_down;
 
 #define TOUCH_POLL_MS 20
 
+static void request_stop(int signo)
+{
+    (void)signo;
+    g_stop_requested = 1;
+}
+
 /* poll + print transitions. Touch_Sample() rejects mismatched I2C
  * reports; longer hysteresis follows the STM32 reference ports. */
 static void touch_poll(void)
@@ -172,7 +180,7 @@ static void touch_dwell(uint32_t ms)
     {
         touch_poll();
         usleep(TOUCH_POLL_MS * 1000);
-    } while (LCD_GetTick() - start < ms);
+    } while (!g_stop_requested && LCD_GetTick() - start < ms);
 }
 
 /* ---- FPS counter ---- */
@@ -246,11 +254,11 @@ static uint32_t hsv_to_rgb(int h, int s, int v)
     return ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
 }
 
-#define G_ROWS 5   /* 5 rows x 736 B payload - one CS frame per row,
-                      one spi_write() per transaction (< spidev 4096) */
+#define G_ROWS 5   /* five staged RGB565 rows */
 
 static void draw_gradient(int hue_a, int hue_b, uint16_t *row)
 {
+    static uint8_t row_wire[SCREEN_W * 2];
     LCD_SetAddress(0, 0, (uint16_t)(SCREEN_W - 1), (uint16_t)(ANIM_H - 1));
     for (int y0 = 0; y0 < ANIM_H; y0 += G_ROWS)
     {
@@ -273,9 +281,14 @@ static void draw_gradient(int hue_a, int hue_b, uint16_t *row)
         for (int k = 0; k < rows; k++)
         {
             uint8_t cmd = (y0 == 0 && k == 0) ? 0x2C : 0x3C;
+            const uint16_t *src = row + (uint32_t)k * SCREEN_W;
 
-            spi_xfer(cmd, (const uint8_t *)(row + (uint32_t)k * SCREEN_W),
-                     (size_t)SCREEN_W * 2U);
+            for (int x = 0; x < SCREEN_W; x++)
+            {
+                row_wire[x * 2] = (uint8_t)(src[x] >> 8);
+                row_wire[x * 2 + 1] = (uint8_t)src[x];
+            }
+            spi_xfer(cmd, row_wire, sizeof row_wire);
         }
     }
 }
@@ -304,7 +317,7 @@ static void gradient_demo(uint32_t ms)
         g_frames++;
         fps_update();
         t = LCD_GetTick() - start;
-    } while (t < ms);
+    } while (!g_stop_requested && t < ms);
 
     log_printf(LOG_LVL_INFO, "  gradient: %u frames in %u ms = %u fps",
            frames, t, frames * 1000u / (t ? t : 1));
@@ -338,7 +351,8 @@ static void fb_blit(void)
             s_row_fb[c * 2]     = (uint8_t)(src[c] >> 8);
             s_row_fb[c * 2 + 1] = (uint8_t)(src[c] & 0xFF);
         }
-        spi_xfer((r == 0) ? 0x2C : 0x3C, s_row_fb, (size_t)SCREEN_W * 2U);
+        spi_xfer((r == 0) ? 0x2C : 0x3C, s_row_fb,
+                 (size_t)SCREEN_W * 2U);
     }
 }
 
@@ -424,12 +438,19 @@ static void timed_screen(const char *name, void (*fn)(void))
 static void TEST_STAND(void)
 {
     timed_screen("frame", DispFrame);
+    if (g_stop_requested) return;
     timed_screen("gray",  DispGrayHor16);
+    if (g_stop_requested) return;
     timed_screen("band",  DispBand);
+    if (g_stop_requested) return;
     timed_screen("red",   disp_red);
+    if (g_stop_requested) return;
     timed_screen("green", disp_green);
+    if (g_stop_requested) return;
     timed_screen("blue",  disp_blue);
+    if (g_stop_requested) return;
     timed_screen("white", disp_white);
+    if (g_stop_requested) return;
     timed_screen("black", disp_black);
 }
 
@@ -437,13 +458,16 @@ static void TEST_STAND(void)
 static void info_demo(uint32_t ms, uint8_t invert)
 {
     char buf[64];
+    const char *pixfmt_label = "RGB565 standard";
     uint32_t fg = invert ? LCD_BLACK : LCD_WHITE;
     uint32_t bg = invert ? LCD_WHITE : LCD_BLACK;
     unsigned eff = spi_actual_khz();
 
     log_printf(LOG_LVL_INFO,
-           "[LCD] info%s: pixfmt=RGB565 spi=%u kHz uvc=%s",
-           invert ? " (inverted)" : "", spi_requested_khz(),
+           "[LCD] info%s: pixfmt=RGB%s spi=%u kHz uvc=%s",
+           invert ? " (inverted)" : "",
+           "565 standard",
+           spi_requested_khz(),
            uvc_present() >= 0 ? "present" : "none");
 
     LCD_SetColor(fg);
@@ -458,7 +482,7 @@ static void info_demo(uint32_t ms, uint8_t invert)
 
         ft_draw(FT_FACE_BOLD, 4, y, 30, "CO5300 368x448", rgb565(fg), rgb565(bg));
         y += 38;
-        snprintf(buf, sizeof buf, "RGB565");
+        snprintf(buf, sizeof buf, "%s", pixfmt_label);
         ft_draw(FT_FACE_REGULAR, 4, y, 26, buf, rgb565(fg), rgb565(bg));
         y += INFO_DY;
         snprintf(buf, sizeof buf, "%uM SPI", g_speed_khz / 1000);
@@ -484,7 +508,7 @@ static void info_demo(uint32_t ms, uint8_t invert)
         LCD_SetAsciiFont(&ASCII_Font16);
         LCD_SetColor(fg);
         LCD_SetBackColor(bg);
-        LCD_DisplayString(4, 8, "CO5300 368x448 RGB565");
+        LCD_DisplayString(4, 8, "CO5300 368x448 RGB565 standard");
         LCD_DisplayString(4, 30, "uvc/touch see console");
     }
 
@@ -495,7 +519,7 @@ static void info_demo(uint32_t ms, uint8_t invert)
         fps_update();
         touch_poll();
         usleep(50000);
-    } while (LCD_GetTick() - start < ms);
+    } while (!g_stop_requested && LCD_GetTick() - start < ms);
 }
 
 /* ---- big-font banner page (DejaVu Bold via ft) ---- */
@@ -545,21 +569,27 @@ static void run_patterns(void)
 {
     log_printf(LOG_LVL_INFO, "[LCD] phase: info");
     info_demo(5000, 0);
+    if (g_stop_requested) return;
 
     log_printf(LOG_LVL_INFO, "[LCD] phase: info (inverted colors)");
     info_demo(5000, 1);
+    if (g_stop_requested) return;
 
     log_printf(LOG_LVL_INFO, "[LCD] phase: vendor TEST_STAND (write time + %d s dwell)",
            DWELL_MS / 1000);
     TEST_STAND();
+    if (g_stop_requested) return;
 
     log_printf(LOG_LVL_INFO, "[LCD] phase: gradient");
     gradient_demo(1000);
+    if (g_stop_requested) return;
     touch_dwell(DWELL_MS);
+    if (g_stop_requested) return;
 
     log_printf(LOG_LVL_INFO, "[LCD] phase: OPi logo + caption");
     logo_screen();
     touch_dwell(DWELL_MS);
+    if (g_stop_requested) return;
 
     log_printf(LOG_LVL_INFO, "[LCD] phase: DejaVu font sizes");
     font_screen();
@@ -570,7 +600,6 @@ int main(int argc, char **argv)
 {
     log_init("lcm_test");
     log_config_from_argv(argc, argv);
-    unsigned speed_khz = g_speed_khz;
 
     setvbuf(stdout, NULL, _IONBF, 0);
     for (int i = 1; i < argc; i++)
@@ -585,23 +614,35 @@ int main(int argc, char **argv)
             default:
                 log_printf(LOG_LVL_INFO,
                        "usage: lcm_test [-s speed_kHz] [-b bright_hex]"
-                       " [-l tux] (40000 = max served)");
+                       " [-l tux] (standard default, speed 40000)");
                 return 1;
             }
         }
         else
         {
             log_printf(LOG_LVL_INFO,
-                   "usage: lcm_test [-s speed_kHz] (40000 = max served)");
+                   "usage: lcm_test [-s speed_kHz] [-b bright_hex]"
+                   " [-l tux] (standard default, speed 40000)");
             return 1;
         }
+    }
+
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = request_stop;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGINT, &sa, NULL) < 0 ||
+        sigaction(SIGTERM, &sa, NULL) < 0)
+    {
+        log_printf(LOG_LVL_ERROR, "sigaction: %s", strerror(errno));
+        return 1;
     }
 
     log_printf(LOG_LVL_INFO,
            "CO5300 %dx%d (MD196) + CHSC6417, wrapped SPI mode 3 (hw SPI3):",
            SCREEN_W, SCREEN_H);
     log_printf(LOG_LVL_INFO,
-           "CLK=JP4.23 MOSI=JP4.19 CS=JP4.24 TOUCH=JP4.5/JP4.3 (i2c-0 0x2E)");
+           "CLK=JP4.23 SI00=JP4.19 SI01=JP4.21 CS=JP4.24 TOUCH=JP4.5/JP4.3 (i2c-0 0x2E)");
 
     brightness_init();
 
@@ -619,14 +660,26 @@ int main(int argc, char **argv)
     log_printf(LOG_LVL_INFO, "[TOUCH] self-test: %s",
            g_touch_ok ? "ACK (chip present)" : "no bus / no ACK");
 
-    if (spi_open(speed_khz * 1000) != 0)
+    if (spi_open(g_speed_khz * 1000) != 0)
         return 1;
 
-    LCD_Init();
+    /* bring the panel up at a gentle 10 MHz - the CO5300 init sequence
+     * (wrapped commands at CS frame granularity) is timing-sensitive
+     * at very high SCK - then jump to the target rate for the pixel
+     * workload. Without this, -s >= 80000 corrupts the init itself and
+     * the panel never leaves sleep. */
+    spi_set_speed(10000000);
+    if (LCD_Init() != 0)
+    {
+        log_printf(LOG_LVL_ERROR, "LCD initialization failed");
+        spi_close();
+        return 1;
+    }
     LCD_SetAsciiFont(&ASCII_Font16);
     paint_fps_band();
+    spi_set_speed(g_speed_khz * 1000);
 
-    for (int loop = 1;; loop++)
+    for (int loop = 1; !g_stop_requested; loop++)
     {
         brightness_set(loop);
         log_printf(LOG_LVL_INFO, "[LCD] loop %d: brightness 0x%02X (%u%%)",
@@ -635,6 +688,8 @@ int main(int argc, char **argv)
         log_printf(LOG_LVL_INFO, "[LCD] phase: HARDWARE banner");
         banner_page("now will do", "HW SPI3 test",
                     LCD_BLACK, LCD_CYAN, 3000);
+        if (g_stop_requested)
+            break;
 
         log_printf(LOG_LVL_INFO,
                "[LCD] running patterns on HARDWARE SPI3 @ %u MHz",
@@ -642,5 +697,6 @@ int main(int argc, char **argv)
         run_patterns();
     }
 
+    spi_close();
     return 0;
 }

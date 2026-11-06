@@ -99,9 +99,12 @@ uint8_t Touch_SelfTest(void)
 {
     /* the first read after open can NACK while the IC's scan cycle is
      * busy - retry hard before declaring the bus dead */
-    for (int i = 0; i < 25; i++)
+    for (int i = 0; i < 100; i++)
+    {
         if (blk_read(0x00, s_blk0) == 0)
             return 1;
+        usleep(5000);
+    }
     return 0;
 }
 

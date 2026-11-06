@@ -14,33 +14,44 @@ Wiring and the DT-overlay enablement (already applied + verified): see
 |---|---|---|---|
 | CS | 24 | PE0 | `/dev/spidev3.0` (hw CS) |
 | CLK | 23 | PE1 | SPI3_CLK |
-| MOSI | 19 | PE2 | SPI3_MOSI (write-only, no MISO wired) |
+| SI00 | 19 | PE2 | SPI3_MOSI |
+| SI01 | 21 | PE3 | SPI3_MISO (unused by standard write path) |
 | TOUCH_SCL / SDA | 5 / 3 | PB2 / PB3 | `/dev/i2c-0`, CHSC6417 @ 0x2E |
 
-SPI **mode 3**, wrapped commands: one CS frame per transaction, header
-`02 00 <cmd> 00` + payload inside the same frame (one `write()`; a CS
-toggle mid-payload would corrupt the stream - this is THE difference to
-the rk3506 DC-panel transport). Rows stream as 2C then 3C continue
-frames, one row (736 B payload) per CS frame.
+The app uses SPI **mode 3** and standard single-lane writes only:
+wrapped `02 00 <cmd> 00` transactions with RGB565 pixels. Each pixel
+row is sent in one CS frame. Dual SPI was tested experimentally but
+could leave the module in an unusable state, so its implementation and
+mode-selection options have been removed.
 
-## Speed: `-s 40000` is the practical maximum (verified)
+## Speed: up to 50 MHz is the CO5300 write limit
 
-- `-s speed_kHz` (default **40000**). The CO5300 family allows ~47 MHz
-  writes; 60 MHz corrupted the checkerboard on the STM32 references.
-- **The vendor driver cannot go faster**: requests above 40 MHz clamp
-  (50/60/80/100 MHz requests all serve the same wire rate), and the
-  SPI3 module clock is pinned at 40 MHz by the CCU - every
-  `clk_set_rate` >= 50 MHz rounds back to exactly 40 MHz (debugfs
-  verified; the parent PLL node refuses re-clocking too). A DTB change
-  cannot fix this - it goes through the same clock framework. Details
-  and the measured wire-rate ladder (9.3 / 17.7 / 22.3 / 29.0 /
-  29.7 Mbit/s for -s 10/20/30/40/50 MHz): `../../docs/spi3-speed-quad-notes.md`.
-- Measured at `-s 40000`: full-screen writes 108-134 ms (~7.5 fps),
-  gradient animation **8 fps** (368x448 RGB565, syscall-per-row); wire
-  rate ~29 Mbit/s (timing probe, overhead-corrected).
-- QSPI/Dual SPI: the module supports them but **JP4 routes only 2 data
-  lines** and the vendor driver/spidev are single-lane - see
-  `../../docs/spi3-speed-quad-notes.md`.
+The A733 SPI controller is specified up to 100 MHz, but the CO5300
+datasheet's serial write timing limits the SCK period to 20 ns (50 MHz).
+On the board, direct spidev tests confirmed the host clocks requests
+above 40 MHz. A 48 MHz request achieved about 42 Mbit/s single-lane
+payload throughput; 50 MHz achieved about 42-44 Mbit/s. These are
+payload rates including syscall/transfer overhead, not direct SCK
+measurements. The SCK pin was not captured with a logic analyzer.
+
+The rate map is non-monotonic: many requests from 41-47 MHz and 49 MHz
+had substantially lower throughput than requests at 40, 48, or 50 MHz.
+The speed default remains 40000; that rate was visually validated in
+standard mode.
+Higher clock
+settings also require checking the actual panel image. A black screen
+at a high setting does not mean SPI3 failed to clock data. Details and
+the live clock/throughput measurements are in
+`../../docs/spi3-speed-quad-notes.md`.
+
+The SoC spidev API accepts dual- and quad-lane transfer requests, but
+the app does not use them. Quad panel wiring remains unverified because
+the SPI3 pin-mux table exposes no IO2/IO3.
+CO5300 read responses are driven on SI00, which is currently wired to
+SPI3 MOSI; reading panel status via ordinary spidev RX therefore needs
+a bidirectional SI00 route not present in the current wiring. A one-off
+standard-read experiment sampled `FF FF FF` on SI01/MISO; this is not valid
+panel data and does not establish panel health or mode.
 
 ## Text: DejaVu Sans via FreeType (the native Linux font stack)
 
@@ -73,16 +84,18 @@ needed if the vendor art changes).
 
 ```
 make push run            # loops forever, Ctrl-C stops
-make run-s SPEED=40000   # 60 s single run at an explicit speed
+make run-s SPEED=40000   # 60 s standard-mode run at an explicit speed
 ```
 
-Console (verified on board):
+Ctrl-C performs a graceful stop.
+
+Console output (standard mode):
 
 ```
 CO5300 368x448 (MD196) + CHSC6417, wrapped SPI mode 3 (hw SPI3):
-CLK=JP4.23 MOSI=JP4.19 CS=JP4.24 TOUCH=JP4.5/JP4.3 (i2c-0 0x2E)
+CLK=JP4.23 SI00=JP4.19 SI01=JP4.21 CS=JP4.24 TOUCH=JP4.5/JP4.3 (i2c-0 0x2E)
 [TOUCH] self-test: ACK (chip present) (chip id 0xA7: 0x01)
-spi3: /dev/spidev3.0 mode 3 @ 40000000 Hz requested (driver may clamp)
+spi3: /dev/spidev3.0 mode 3, standard @ 40000000 Hz requested (actual SCK not measured)
 [LCD] loop 1: brightness 0x01 (0%)
 [LCD] phase: HARDWARE banner
 [TOUCH] down X=161 Y=114 (448-Y=334)
