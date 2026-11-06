@@ -1,0 +1,10 @@
+# Editors / OS
+Thumbs.db
+# Object files
+*.o
+*.obj
+*.out
+*.swp
+*~
+# Project binaries (add one line per project)
+/app/blink_hello/blink_hello
