@@ -75,7 +75,8 @@ apt if needed.
 | LED | single `status_led` (gpio-leds, high active), boots with trigger `heartbeat`, free for apps |
 | Temperature | `/sys/class/thermal/`: zone0 `cpub` (A76 pair), zone3 `cpul` (A55 six), zone1 ddr, zone2 npu, zone4 gpu - millidegrees C |
 | PWM | 3 controllers (`pwmchip0/10/20`), 10 channels each; PWM0_0..9 land on the JP4 40-pin header |
-| GPIO/I2C/SPI | JP4 40-pin header (TWI0-3, SPI3, UART2/6/7, PWM0_x) - full table in `D:\board_database\orangepi-zeo3w\README.md` |
+| GPIO/I2C/SPI | JP4 40-pin header (TWI0-3, SPI3, UART2/6/7, PWM0_x) - full table in `D:\board_database\orangepi-zeo3w\README.md`; **SPI3 (spidev3.0/3.1) + TWI0 (`i2c-0`, PB2/PB3) enabled via overlays** - see `docs/co5300_md196_jp4-pinout.md` |
+| Coprocessor | RISC-V XuanTie E902 @ 200 MHz - **vendor PM core, not user-programmable** on this image (no remoteproc; ATF-owned) - analysis in `docs/e902-coprocessor.md` |
 
 LED control: `echo heartbeat > /sys/class/leds/status_led/trigger` or
 `echo 1 > .../brightness` - the nodes are root-owned 0644, but we ssh

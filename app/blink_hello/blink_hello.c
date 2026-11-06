@@ -118,6 +118,7 @@ int main(void)
 
 	signal(SIGINT, on_signal);
 	signal(SIGTERM, on_signal);
+	signal(SIGHUP, on_signal);   /* ssh drops mid-run - still restore */
 
 	printf("blinking %s, %d ms per phase, Ctrl-C to stop\n",
 	       LED_PATH, BLINK_MS);

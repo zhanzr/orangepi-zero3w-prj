@@ -4,7 +4,8 @@ Setup and design notes for the Orange Pi Zero 3W project.
 
 | File | Content |
 |---|---|
-| (empty yet) | hardware notes will accumulate here as apps need them |
+| `co5300_md196_jp4-pinout.md` | CO5300 1.96" 368x448 AMOLED + CHSC6417 touch on JP4: full wiring (SPI3 + TWI0), DT overlays enabled + verified, bring-up notes |
+| `e902-coprocessor.md` | The RISC-V XuanTie E902 (200 MHz): what it is, why it is NOT user-programmable on the vendor image, what the mainline route would take |
 
 Vendor manuals (PDFs, schematics, tools) are kept in
 `D:\board_database\orangepi-zeo3w` and are not part of this repository.

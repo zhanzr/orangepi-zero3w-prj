@@ -39,6 +39,22 @@ UART2/6/7, PWM0_0..9. Two 22-pin MIPI CSI camera connectors; no HDMI.
   still wedges, kill the local `ssh`/`make` and trust the on-board
   artifacts (`results.csv` etc.) as the source of truth.
 
+## DT overlays (JP4 header peripherals)
+
+- Peripherals are enabled with Armbian overlays in
+  `/boot/armbianEnv.txt`: `overlays=spi3-cs0-cs1-spidev i2c0` applied
+  (2026-11-06) - `/dev/spidev3.0` + `i2c-0` (TWI0, PB2/PB3) verified
+  after reboot. Overlay files:
+  `/boot/dtb/allwinner/overlay/sun60i-a733-*.dtbo`; **entries in
+  `overlays=` are written WITHOUT the `overlay_prefix`** (the boot
+  script prepends `sun60i-a733-` - full filenames silently do not
+  apply). Available overlays include i2c0-3, pwm0-9, uart2/6, lcd,
+  spi3-cs0-cs1-spidev.
+- A backup of the pre-overlay file is on the board:
+  `/boot/armbianEnv.txt.bak`.
+- `fdtget`/`fdtput`/`dtc` + libgpiod (`gpioinfo`) are installed on the
+  board; the live DT is readable at `/sys/firmware/fdt`.
+
 ## Layout
 
 - `app/<project>/` - one self-contained directory per app (Makefile +
