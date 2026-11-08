@@ -6,7 +6,7 @@ Setup and design notes for the Orange Pi Zero 3W project.
 |---|---|
 | `co5300_md196_jp4-pinout.md` | CO5300 1.96" 368x448 AMOLED + CHSC6417 touch on JP4: full wiring (SPI3 + TWI0), DT overlays enabled + verified, bring-up notes |
 | `spi3-speed-quad-notes.md` | Measured SPI3 clock mapping and throughput, CO5300 50 MHz timing limit, and dual/quad API versus JP4 wiring feasibility |
-| `csi-ov5647-notes.md` | MIPI CSI (CAM1) + OV5647 feasibility: I2C ID verified, existing CSI0/MIPI0/VINC0 route, no BSP OV5647 driver, sensor DT address/power polarity caveats, and required kernel work |
+| `csi-ov5647-notes.md` | IMX219/OV5647 CSI bring-up: both IMX219 ports capture full-resolution frames on Armbian; ISP tuning/image quality, simultaneous capture, and an earlier unexplained access loss remain under investigation |
 | `e902-coprocessor.md` | The RISC-V XuanTie E902 (200 MHz): what it is, why it is NOT user-programmable on the vendor image, what the mainline route would take |
 
 Vendor manuals (PDFs, schematics, tools) are kept in

@@ -134,7 +134,7 @@ static void brightness_set(int loop)
 static int g_touch_ok;
 static int g_touch_down;
 
-#define TOUCH_POLL_MS 20
+#define TOUCH_POLL_MS 100
 
 static void request_stop(int signo)
 {
@@ -156,16 +156,18 @@ static void touch_poll(void)
         return;
     x = Touch_X();
     y = Touch_Y();
-    if (raw) { dn_run = (dn_run < 3) ? dn_run + 1 : 3; up_run = 0; }
-    else     { up_run = (up_run < 6) ? up_run + 1 : 6; dn_run = 0; }
+    if (raw) { dn_run = (dn_run < 2) ? dn_run + 1 : 2; up_run = 0; }
+    else     { up_run = (up_run < 2) ? up_run + 1 : 2; dn_run = 0; }
 
-    if (!g_touch_down && dn_run >= 3)
+    /* 2 valid samples at the 100 ms poll = ~200 ms hysteresis either
+     * way; glitches are already rejected inside Touch_Sample() */
+    if (!g_touch_down && dn_run >= 2)
     {
         g_touch_down = 1;
         log_printf(LOG_LVL_INFO, "[TOUCH] down X=%d Y=%d (%d-Y=%d)",
                x, y, SCREEN_H, SCREEN_H - y);
     }
-    else if (g_touch_down && up_run >= 6)
+    else if (g_touch_down && up_run >= 2)
     {
         g_touch_down = 0;
         log_printf(LOG_LVL_INFO, "[TOUCH] release");
